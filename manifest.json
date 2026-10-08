@@ -1,6 +1,6 @@
 {
-  "name": "만나기 체크리스트",
-  "short_name": "만나기 체크",
+  "name": "원희 만나기 체크리스트",
+  "short_name": "원희 만나기",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
