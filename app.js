@@ -9,7 +9,7 @@ const LOGIN_EMAIL = window.LOGIN_EMAIL || "family@example.com";
 const PIN_PREFIX = "pin-";
 const ROOM = "home";
 const APP_NAME = "만나기 체크리스트";
-const ROLE = { wife: "아내", husband: "남편", both: "같이" };
+const ROLE = { wife: "예오니", husband: "종어니", both: "같이" };
 const LIST_NAME = { bag: "🎒 출산가방", policy: "📋 출산 후 신청" };
 const $ = (s) => document.querySelector(s);
 const GROUP_HINT = Object.fromEntries([...BAG, ...POLICY].filter((g) => g.hint).map((g) => [g.name, g.hint]));
@@ -541,8 +541,8 @@ function askRole() {
     const pick = (r) => { state.me = r; LS.set("cb_me", r); closeSheet(); resolve(); };
     sheet("누구로 쓰실래요?", [
       h("p", { class: "sub" }, "체크한 사람이 표시돼요. 나중에 설정에서 바꿀 수 있어요."),
-      h("button", { type: "button", class: "big", onclick: () => pick("wife") }, "👩 아내"),
-      h("button", { type: "button", class: "big", onclick: () => pick("husband") }, "👨 남편"),
+      h("button", { type: "button", class: "big", onclick: () => pick("wife") }, "👩 " + ROLE.wife),
+      h("button", { type: "button", class: "big", onclick: () => pick("husband") }, "👨 " + ROLE.husband),
     ], { lock: true });
   });
 }
@@ -621,7 +621,7 @@ function openEdit(id, groupName) {
     h("div", { class: "fld" }, h("label", null, "제목"), title),
     h("div", { class: "fld" }, h("label", null, "메모"), note),
     h("div", { class: "fld" }, h("label", null, "그룹"), sel, newG),
-    h("div", { class: "fld" }, h("label", null, "담당"), seg([["both", "같이"], ["wife", "아내"], ["husband", "남편"]], assignee, (v) => { assignee = v; })),
+    h("div", { class: "fld" }, h("label", null, "담당"), seg([["both", ROLE.both], ["wife", ROLE.wife], ["husband", ROLE.husband]], assignee, (v) => { assignee = v; })),
     h("div", { class: "fld" }, h("label", null, state.tab === "policy" ? "기한(직접 지정하면 출산일 기준 자동 계산보다 우선해요)" : "기한 (선택)"), due),
     h("div", { class: "fld" }, h("label", null, "바로가기 링크 (선택)"), link),
     h("div", { class: "btns" },
@@ -637,7 +637,7 @@ function openUpdates() {
   const ACT = { done: "완료", undone: "체크 해제", edit: "수정", add: "추가" };
   const seen = +(LS.get("cb_seen_" + ROOM) || 0);
   sheet("최근 업데이트", [
-    h("p", { class: "sub" }, "아내·남편이 최근에 바꾼 항목이에요."),
+    h("p", { class: "sub" }, `${ROLE.wife}·${ROLE.husband}가 최근에 바꾼 항목이에요.`),
     rows.length ? h("ul", { class: "ulist" }, rows.map((it) => h("li", null,
       `${it.at > seen && it.by !== state.me ? "🆕 " : ""}${ROLE[it.by] || ""} · ${ACT[it.act] || "변경"}: ${it.title}`,
       h("small", null, `${LIST_NAME[it.list] || ""} · ${ago(it.at)}`))))
@@ -677,7 +677,7 @@ function openSettings() {
   const birth = h("input", { type: "date", value: (state.meta && state.meta.birthDate) || "" });
   sheet("설정", [
     installSection(),
-    h("div", { class: "fld" }, h("label", null, "나는"), seg([["wife", "👩 아내"], ["husband", "👨 남편"]], state.me, (v) => {
+    h("div", { class: "fld" }, h("label", null, "나는"), seg([["wife", "👩 " + ROLE.wife], ["husband", "👨 " + ROLE.husband]], state.me, (v) => {
       state.me = v; LS.set("cb_me", v); render();
     })),
     h("div", { class: "fld" }, h("label", null, "아기 이름 (태명)"), name),
