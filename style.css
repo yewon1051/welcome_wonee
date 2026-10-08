@@ -7,33 +7,37 @@
   :root{--bg:#1b1719;--card:#262022;--tx:#f1e9ec;--sub:#a99da2;--ac2:#3a2a2e;--ln:#3a3236;--chip:#3a2a2e;color-scheme:dark}
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html{scroll-padding-top:220px}
+html{scroll-padding-top:calc(var(--hdr,150px) + 8px)}
 body{margin:0;background:var(--bg);color:var(--tx);font-family:-apple-system,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif;line-height:1.45;padding-bottom:110px}
 button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer}
 
-header#top{position:sticky;top:0;z-index:20;background:var(--bg);padding:calc(10px + env(safe-area-inset-top,0px)) 16px 8px;border-bottom:1px solid var(--ln)}
-.row{display:flex;align-items:center;justify-content:space-between}
-h1{font-size:18px;margin:0}
-.hbtns{display:flex;gap:6px}
-.hbtns button{position:relative;width:40px;height:40px;border:1px solid var(--ln);background:var(--card);border-radius:12px;font-size:18px}
+/* 헤더: 제목줄 · 리스트 전환 · 진행률 · 분류 바로가기를 최대한 얇게 */
+header#top{position:sticky;top:0;z-index:20;background:var(--bg);padding:calc(6px + env(safe-area-inset-top,0px)) 16px 0;border-bottom:1px solid var(--ln)}
+.row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+h1{font-size:16px;margin:0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hbtns{display:flex;gap:6px;flex:none}
+.hbtns button{position:relative;width:34px;height:34px;border:1px solid var(--ln);background:var(--card);border-radius:10px;font-size:16px;padding:0}
 #badge{position:absolute;top:-5px;right:-5px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--bad);color:#fff;font-size:11px;line-height:18px;font-weight:700}
 
-#tabs{display:flex;gap:6px;margin:10px 0 8px}
-#tabs button{flex:1;border:1px solid var(--ln);background:var(--card);border-radius:12px;padding:8px 6px;font-weight:600;font-size:14px}
-#tabs button small{display:block;font-weight:400;color:var(--sub);font-size:12px}
-#tabs button.on{background:var(--ac);border-color:var(--ac);color:#fff}
-#tabs button.on small{color:#fff;opacity:.9}
+#tabs{display:flex;gap:3px;margin:6px 0;padding:3px;background:var(--chip);border-radius:10px}
+#tabs button{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;border:0;background:none;border-radius:8px;padding:5px 4px;font-weight:600;font-size:13.5px;color:var(--sub)}
+#tabs button small{font-weight:400;font-size:11.5px;font-variant-numeric:tabular-nums}
+#tabs button.on{background:var(--ac);color:#fff}
 
-#prog .bar{height:8px;background:var(--ln);border-radius:8px;overflow:hidden}
+#prog .bar{height:4px;background:var(--ln);border-radius:4px;overflow:hidden}
 #prog .bar i{display:block;height:100%;background:var(--ac);transition:width .25s}
-#prog .meta{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--sub);margin-top:4px}
-.chip-status{white-space:nowrap}
-.chip-status.error{color:var(--bad);font-weight:600}
+#prog .meta{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;color:var(--sub);margin-top:3px;font-variant-numeric:tabular-nums}
+.chip-status{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip-status.error{color:var(--bad);font-weight:600;white-space:normal}
 
-#filters{display:flex;gap:6px;overflow-x:auto;padding:8px 0 2px}
-#filters button{flex:none;border:1px solid var(--ln);background:var(--card);border-radius:16px;padding:5px 12px;font-size:13px}
-#filters button.on{background:var(--tx);color:var(--bg);border-color:var(--tx)}
+#chips{display:flex;gap:6px;overflow-x:auto;margin:0 -16px;padding:7px 16px 8px;scrollbar-width:none}
+#chips::-webkit-scrollbar{display:none}
+#chips button{flex:none;display:flex;align-items:center;gap:5px;border:1px solid var(--ln);background:var(--card);border-radius:14px;padding:4px 10px;font-size:12.5px;white-space:nowrap}
+#chips button small{color:var(--sub);font-size:11px;font-variant-numeric:tabular-nums}
+#chips button.full small{color:var(--ok);font-weight:700}
+#chips button.on{background:var(--tx);color:var(--bg);border-color:var(--tx)}
+#chips button.on small{color:var(--bg);opacity:.75}
 
 main#list{padding:12px 16px;max-width:620px;margin:0 auto}
 .banner{background:var(--ac2);border:1px solid var(--ln);border-radius:12px;padding:10px 12px;font-size:13px;margin-bottom:12px}
@@ -43,6 +47,7 @@ main#list{padding:12px 16px;max-width:620px;margin:0 auto}
 details.grp{background:var(--card);border:1px solid var(--ln);border-radius:14px;margin-bottom:12px;overflow:hidden}
 details.grp>summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 14px;background:var(--chip);font-weight:700;font-size:15px}
 details.grp>summary::-webkit-details-marker{display:none}
+details.grp>summary .gname small{display:block;font-weight:400;font-size:12px;color:var(--sub);margin-top:1px}
 details.grp>summary .cnt{font-weight:400;color:var(--sub);font-size:13px;white-space:nowrap}
 details.grp>summary .cnt.full{color:var(--ok);font-weight:700}
 .addbtn{display:block;width:100%;border:0;border-top:1px dashed var(--ln);background:none;color:var(--sub);padding:10px;font-size:13px}

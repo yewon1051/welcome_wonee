@@ -1,4 +1,4 @@
-import { BAG, POLICY, DEFAULT_BIRTH } from "./seed.js";
+import { BAG, POLICY, DEFAULT_BIRTH, GROUPS_VERSION, GROUP_RENAME } from "./seed.js";
 
 /* ---------- 기본 도구 ---------- */
 const FB = "https://www.gstatic.com/firebasejs/10.12.2";
@@ -12,6 +12,8 @@ const APP_NAME = "만나기 체크리스트";
 const ROLE = { wife: "아내", husband: "남편", both: "같이" };
 const LIST_NAME = { bag: "🎒 출산가방", policy: "📋 출산 후 신청" };
 const $ = (s) => document.querySelector(s);
+const GROUP_HINT = Object.fromEntries([...BAG, ...POLICY].filter((g) => g.hint).map((g) => [g.name, g.hint]));
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const LS = {
   get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
@@ -76,7 +78,6 @@ function safeUrl(u) {
 /* ---------- 상태 ---------- */
 const state = {
   tab: LS.get("cb_tab") === "policy" ? "policy" : "bag",
-  filter: "all",
   items: {},
   meta: {},
   me: LS.get("cb_me"),
@@ -87,6 +88,7 @@ const state = {
 };
 let store = null;
 let seeding = false;
+let migrating = false;
 let setupShown = false;
 const closedGroups = new Set(JSON.parse(LS.get("cb_closed") || "[]"));
 
@@ -148,6 +150,8 @@ function firebaseStore(hd) {
       b.set(metaRef, meta, { merge: true });
       await b.commit();
     },
+    // 여러 항목의 일부 필드를 한 번에 덮어써요 (분류 이름 변경 등). Firestore는 seed와 같은 merge 쓰기예요.
+    patch(entries, meta) { return this.seed(entries, meta); },
   };
 }
 
@@ -173,6 +177,11 @@ function localStore(hd) {
       data.meta = { ...(data.meta || {}), ...meta };
       persist(); emit();
     },
+    async patch(entries, meta) {
+      for (const [id, d] of entries) if (data.items[id]) data.items[id] = { ...data.items[id], ...d };
+      data.meta = { ...(data.meta || {}), ...meta };
+      persist(); emit();
+    },
   };
 }
 
@@ -193,18 +202,32 @@ function seedEntries() {
   return out;
 }
 
+// 예전 분류 이름으로 저장된 항목을 새 이름으로 한 번 바꿔요.
+function migrateGroups() {
+  if (migrating || !store || !state.loaded || !state.metaLoaded || !state.meta.seeded) return;
+  if ((state.meta.groupsVersion || 1) >= GROUPS_VERSION) return;
+  const changes = Object.entries(state.items)
+    .filter(([, it]) => GROUP_RENAME[it.group])
+    .map(([id, it]) => [id, { group: GROUP_RENAME[it.group] }]);
+  migrating = true;
+  store.patch(changes, { groupsVersion: GROUPS_VERSION })
+    .catch(() => {})
+    .finally(() => { migrating = false; });
+}
+
 const handlers = {
-  onItems(m) { state.items = m; state.loaded = true; render(); },
+  onItems(m) { state.items = m; state.loaded = true; render(); migrateGroups(); },
   onMeta(meta, exists, fromServer) {
     state.meta = meta || {};
     if (fromServer) state.metaLoaded = true;
     if (!exists && fromServer && !seeding && store) {
       seeding = true;
-      store.seed(seedEntries(), { seeded: true, babyName: "", birthDate: DEFAULT_BIRTH, createdAt: Date.now() })
+      store.seed(seedEntries(), { seeded: true, babyName: "", birthDate: DEFAULT_BIRTH, groupsVersion: GROUPS_VERSION, createdAt: Date.now() })
         .catch((e) => setStatus("error", "기본 리스트를 만들지 못했어요: " + ((e && e.message) || e)))
         .finally(() => { seeding = false; });
     }
     render();
+    migrateGroups();
     maybeSetup();
   },
   onStatus(s, msg) { setStatus(s, msg); },
@@ -231,18 +254,9 @@ function dueOf(it) {
   return null;
 }
 function entriesOf(tab) { return Object.entries(state.items).filter(([, it]) => it.list === tab); }
-function matches(it) {
-  switch (state.filter) {
-    case "todo": return !it.done;
-    case "done": return !!it.done;
-    case "mine": return !it.done && (it.assignee === state.me || it.assignee === "both" || !it.assignee);
-    default: return true;
-  }
-}
-function grouped(tab, useFilter) {
+function grouped(tab) {
   const map = new Map();
   for (const [id, it] of entriesOf(tab)) {
-    if (useFilter && !matches(it)) continue;
     const g = it.group || "기타";
     if (!map.has(g)) map.set(g, []);
     map.get(g).push([id, it]);
@@ -254,7 +268,7 @@ function grouped(tab, useFilter) {
   arr.sort((a, b) => a.min - b.min);
   return arr;
 }
-function groupNames(tab) { return grouped(tab, false).map((g) => g.name); }
+function groupNames(tab) { return grouped(tab).map((g) => g.name); }
 function counts(tab) {
   const e = entriesOf(tab);
   return { done: e.filter(([, it]) => it.done).length, total: e.length };
@@ -307,13 +321,55 @@ function renderTabs() {
   }));
 }
 
-function renderFilters() {
-  const opts = [["all", "전체"], ["todo", "남은 것"], ["mine", "내 것"], ["done", "완료"]];
-  $("#filters").replaceChildren(...opts.map(([k, label]) => h("button", {
-    type: "button", class: state.filter === k ? "on" : "",
-    onclick: () => { state.filter = k; render(); },
-  }, label)));
+/* 분류 바로가기 칩: 누르면 그 분류로 스크롤하고, 스크롤하면 지금 보이는 분류에 불이 들어와요. */
+function renderChips() {
+  const gs = state.loaded ? grouped(state.tab) : [];
+  $("#chips").replaceChildren(...gs.map((g, i) => {
+    const d = g.entries.filter(([, it]) => it.done).length;
+    return h("button", {
+      type: "button", "data-i": i, class: d === g.entries.length ? "full" : null,
+      onclick: () => jumpTo(i),
+    }, g.name, h("small", null, `${d}/${g.entries.length}`));
+  }));
+  spy();
 }
+
+function jumpTo(i) {
+  const el = document.getElementById("grp-" + i);
+  if (!el) return;
+  el.open = true;
+  el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+}
+
+function spy() {
+  const groups = document.querySelectorAll("details.grp");
+  const line = $("#top").getBoundingClientRect().bottom + 12;
+  let cur = groups.length ? 0 : -1;
+  groups.forEach((g, i) => { if (g.getBoundingClientRect().top <= line) cur = i; });
+  if (groups.length && innerHeight + scrollY >= document.documentElement.scrollHeight - 4) cur = groups.length - 1;
+  const bar = $("#chips");
+  for (const c of bar.children) {
+    const on = +c.dataset.i === cur;
+    if (on && !c.classList.contains("on")) {
+      const left = c.offsetLeft - bar.offsetLeft;
+      if (left < bar.scrollLeft || left + c.offsetWidth > bar.scrollLeft + bar.clientWidth) {
+        bar.scrollTo({ left: left - 16, behavior: reduceMotion ? "auto" : "smooth" });
+      }
+    }
+    c.classList.toggle("on", on);
+  }
+}
+let spyQueued = false;
+window.addEventListener("scroll", () => {
+  if (spyQueued) return;
+  spyQueued = true;
+  requestAnimationFrame(() => { spyQueued = false; spy(); });
+}, { passive: true });
+
+// 헤더 높이만큼 스크롤 위치를 띄워서 바로가기한 분류 제목이 헤더에 가리지 않게 해요.
+new ResizeObserver(([e]) => {
+  document.documentElement.style.setProperty("--hdr", Math.ceil(e.target.getBoundingClientRect().height) + "px");
+}).observe($("#top"));
 
 function dueTag(it) {
   if (it.done) return null;
@@ -362,14 +418,16 @@ function renderList() {
   if (!state.loaded) {
     nodes.push(h("div", { class: "empty" }, "불러오는 중…"));
   } else {
-    const gs = grouped(state.tab, true);
-    if (!gs.length) nodes.push(h("div", { class: "empty" }, state.filter === "all" ? "항목이 없어요. ＋ 버튼으로 추가해보세요." : "해당하는 항목이 없어요."));
-    for (const g of gs) {
-      const all = entriesOf(state.tab).filter(([, it]) => (it.group || "기타") === g.name);
-      const d = all.filter(([, it]) => it.done).length;
+    const gs = grouped(state.tab);
+    if (!gs.length) nodes.push(h("div", { class: "empty" }, "항목이 없어요. ＋ 버튼으로 추가해보세요."));
+    gs.forEach((g, i) => {
+      const d = g.entries.filter(([, it]) => it.done).length;
       const key = state.tab + "|" + g.name;
-      const det = h("details", { class: "grp", open: !closedGroups.has(key) },
-        h("summary", null, h("span", null, g.name), h("span", { class: "cnt" + (d === all.length ? " full" : "") }, `${d}/${all.length}`)),
+      const hint = GROUP_HINT[g.name];
+      const det = h("details", { class: "grp", id: "grp-" + i, open: !closedGroups.has(key) },
+        h("summary", null,
+          h("span", { class: "gname" }, g.name, hint ? h("small", null, hint) : null),
+          h("span", { class: "cnt" + (d === g.entries.length ? " full" : "") }, `${d}/${g.entries.length}`)),
         g.entries.map(([id, it]) => itemEl(id, it)),
         h("button", { type: "button", class: "addbtn", onclick: () => openEdit(null, g.name) }, "＋ 이 그룹에 항목 추가"));
       det.addEventListener("toggle", () => {
@@ -377,7 +435,7 @@ function renderList() {
         LS.set("cb_closed", JSON.stringify([...closedGroups]));
       });
       nodes.push(det);
-    }
+    });
   }
   root.replaceChildren(...nodes);
 }
@@ -395,8 +453,8 @@ function render() {
   renderTitle();
   renderTabs();
   renderProgress();
-  renderFilters();
   renderList();
+  renderChips();
   renderBadge();
 }
 
