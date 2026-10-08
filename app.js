@@ -647,10 +647,36 @@ function openUpdates() {
   renderBadge();
 }
 
+/* 홈 화면에 추가: 안드로이드 크롬은 설치 창을 바로 띄우고, 아이폰은 방법을 안내해요. */
+let installPrompt = null;
+window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installPrompt = e; });
+window.addEventListener("appinstalled", () => { installPrompt = null; toast("홈 화면에 추가했어요"); });
+const isStandalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+
+function installSection() {
+  if (isStandalone()) return null;
+  const ua = navigator.userAgent;
+  const inApp = /KAKAOTALK|NAVER|Instagram|FBAN|FBAV|Line\//i.test(ua);
+  const ios = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  let body;
+  if (inApp) body = h("div", { class: "warn" }, "카카오톡 같은 앱 안에서는 추가할 수 없어요. 오른쪽 아래(또는 위) ⋮ 메뉴에서 '다른 브라우저로 열기'를 누른 뒤 다시 해보세요.");
+  else if (installPrompt) body = h("button", { type: "button", class: "btn pri", onclick: async () => {
+    const p = installPrompt;
+    installPrompt = null;
+    p.prompt();
+    try { await p.userChoice; } catch (e) {}
+    closeSheet();
+  } }, "📲 홈 화면에 추가");
+  else if (ios) body = h("div", { class: "warn" }, "Safari 아래쪽 공유 버튼(네모에 화살표 ⬆︎) → '홈 화면에 추가' → 추가. 홈 화면 아이콘으로 처음 열면 비밀번호를 한 번 더 입력해요.");
+  else body = h("div", { class: "warn" }, "브라우저 오른쪽 위 ⋮ 메뉴 → '홈 화면에 추가' 또는 '앱 설치'를 누르세요.");
+  return h("div", { class: "fld install" }, h("label", null, "폰 홈 화면에 앱 아이콘 만들기"), body);
+}
+
 function openSettings() {
   const name = h("input", { type: "text", value: (state.meta && state.meta.babyName) || "", maxLength: 20, placeholder: "예: 튼튼이" });
   const birth = h("input", { type: "date", value: (state.meta && state.meta.birthDate) || "" });
   sheet("설정", [
+    installSection(),
     h("div", { class: "fld" }, h("label", null, "나는"), seg([["wife", "👩 아내"], ["husband", "👨 남편"]], state.me, (v) => {
       state.me = v; LS.set("cb_me", v); render();
     })),
@@ -670,6 +696,38 @@ function openSettings() {
       : h("div", { class: "warn" }, "지금은 체험 모드예요. README의 설정을 마치면 비밀번호로 로그인해서 같이 쓸 수 있어요."),
   ]);
 }
+
+/* ---------- 당겨서 새로고침 ---------- */
+// 홈 화면 앱에는 브라우저의 당겨서 새로고침이 없어서 직접 만들어요. 맨 위에서 아래로 당겼다 놓으면 새로고침해요.
+(() => {
+  const ptr = $("#ptr");
+  const PULL = 70; // 표시가 이만큼 내려오면 새로고침
+  let y0 = null;
+  let pull = 0;
+  const reset = () => { ptr.classList.remove("show", "ready"); ptr.style.transform = ""; };
+  window.addEventListener("touchstart", (e) => {
+    y0 = scrollY <= 0 && !dlg.open && e.touches.length === 1 ? e.touches[0].clientY : null;
+    pull = 0;
+  }, { passive: true });
+  window.addEventListener("touchmove", (e) => {
+    if (y0 == null) return;
+    pull = Math.max(0, (e.touches[0].clientY - y0) * 0.5);
+    if (pull < 8) { reset(); return; }
+    const ready = pull >= PULL;
+    ptr.textContent = ready ? "↻ 놓으면 새로고침" : "↓ 당겨서 새로고침";
+    ptr.classList.add("show");
+    ptr.classList.toggle("ready", ready);
+    ptr.style.transform = `translate(-50%, ${Math.min(pull, PULL + 20)}px)`;
+  }, { passive: true });
+  window.addEventListener("touchend", () => {
+    if (y0 == null) return;
+    y0 = null;
+    if (pull >= PULL) {
+      ptr.textContent = "새로고침 중…";
+      location.reload();
+    } else reset();
+  });
+})();
 
 /* ---------- 시작 ---------- */
 $("#btnSet").addEventListener("click", () => { if (store) openSettings(); });
