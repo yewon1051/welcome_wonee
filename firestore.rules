@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 부부 공용 계정(config.js의 LOGIN_EMAIL)으로 비밀번호 로그인한 사람만 읽고 쓸 수 있어요.
+    // config.js의 LOGIN_EMAIL을 바꾸면 아래 이메일도 똑같이 바꾸고 콘솔에 다시 게시하세요.
+    match /rooms/{roomId}/{document=**} {
+      allow read, write: if request.auth != null
+        && request.auth.token.email == "family@example.com";
+    }
+  }
+}

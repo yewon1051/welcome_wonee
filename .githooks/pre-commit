@@ -1,0 +1,4 @@
+#!/bin/sh
+# 커밋 전에 개인정보·위험 패턴을 검사해요.
+# 켜는 법: git config core.hooksPath .githooks
+node scripts/check-public.mjs && node --check app.js

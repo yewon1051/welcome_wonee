@@ -1,0 +1,22 @@
+name: check
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: 개인정보·위험 패턴 검사
+        run: node scripts/check-public.mjs
+      - name: 문법 검사
+        run: |
+          node --check app.js
+          node --check seed.js

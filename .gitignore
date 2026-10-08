@@ -1,0 +1,51 @@
+# 이 저장소는 public이에요. 아래 파일은 GitHub에 올라가지 않아요.
+# 주의: config.js(Firebase 웹 설정)는 공개돼도 되는 값이고, 배포에 필요해서 올려요.
+
+# ── 1. 비밀 값 · 키 (절대 올리면 안 돼요) ──
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*serviceAccount*.json
+*service-account*.json
+*firebase-adminsdk*.json
+secrets/
+*.secret.*
+
+# ── 2. 개인정보가 들어갈 수 있는 파일 ──
+# 비밀번호·이름·출산일 메모, 앱 데이터 백업·내보내기
+private/
+notes/
+*.private.*
+*.local.*
+backup/
+backups/
+exports/
+*-backup.json
+*-export.json
+
+# ── 3. 사진 · 캡처 (본인·타인 정보, 저작권) ──
+uploads/
+screenshots/
+*.jpg
+*.jpeg
+*.heic
+*.mp4
+*.mov
+*.pdf
+
+# ── 4. 개발 도구 · 로컬 설정 ──
+.claude/settings.local.json
+.vscode/
+.idea/
+node_modules/
+__pycache__/
+.firebase/
+firebase-debug.log
+*.log
+
+# ── 5. 운영체제가 만드는 파일 ──
+.DS_Store
+Thumbs.db
+desktop.ini
