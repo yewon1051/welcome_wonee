@@ -9,6 +9,9 @@ export const DEFAULT_BIRTH = "";
 // 이름을 또 바꿀 땐 여기에 추가하고 GROUPS_VERSION을 1 올려요. 앱이 버전마다 한 번만 바꿔요.
 // 3: 출산가방을 산모용 · 아기용 · 보호자용 세 분류로 다시 묶었어요 (중복 항목 정리). planBagV3 참고.
 export const GROUPS_VERSION = 3;
+// 출산가방 세 분류 정리가 끝났다는 표시예요. GROUPS_VERSION과 따로 둬서, 배포 직후 옛 app.js(캐시)가 버전만 올려버려도 새 코드가 다시 정리해요.
+// planBagV3는 여러 번 실행해도 결과가 같아요.
+export const BAG_LAYOUT = 3;
 export const GROUP_RENAME = {
   "📄 서류 · 결제 (L자 파일에 모아두기)": "📄 서류",
   "🧾 퇴원 때 원무과에서 받아오기": "🧾 퇴원 서류",

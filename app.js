@@ -1,4 +1,5 @@
-import { BAG, POLICY, DEFAULT_BIRTH, GROUPS_VERSION, GROUP_RENAME, planBagV3 } from "./seed.js";
+// 배포할 때마다 index.html·app.js의 ?v= 숫자를 같이 올려요 (캐시 때문에 옛 파일과 섞이지 않게)
+import { BAG, POLICY, DEFAULT_BIRTH, GROUPS_VERSION, GROUP_RENAME, BAG_LAYOUT, planBagV3 } from "./seed.js?v=4";
 
 /* ---------- 기본 도구 ---------- */
 const FB = "https://www.gstatic.com/firebasejs/10.12.2";
@@ -207,7 +208,8 @@ function seedEntries() {
 function migrateGroups() {
   if (migrating || !store || !state.loaded || !state.metaLoaded || !state.meta.seeded) return;
   const v = state.meta.groupsVersion || 1;
-  if (v >= GROUPS_VERSION) return;
+  const needBag = (state.meta.bagLayout || 0) < BAG_LAYOUT;
+  if (v >= GROUPS_VERSION && !needBag) return;
   const patches = new Map();
   const renamed = {};
   for (const [id, it] of Object.entries(state.items)) {
@@ -216,7 +218,7 @@ function migrateGroups() {
     renamed[id] = { ...it, group: g };
   }
   let creates = [], removes = [];
-  if (v < 3) {
+  if (needBag) {
     const plan = planBagV3(renamed);
     for (const [id, p] of plan.patches) patches.set(id, { ...(patches.get(id) || {}), ...p });
     creates = plan.creates;
@@ -225,7 +227,7 @@ function migrateGroups() {
   migrating = true;
   // 새 항목·삭제를 먼저 하고, 버전 표시는 마지막에 남겨요 (중간에 끊기면 다음에 다시 시도)
   Promise.all([...creates.map(([id, d]) => store.upsert(id, d)), ...removes.map((id) => store.remove(id))])
-    .then(() => store.patch([...patches], { groupsVersion: GROUPS_VERSION }))
+    .then(() => store.patch([...patches], { groupsVersion: GROUPS_VERSION, bagLayout: BAG_LAYOUT }))
     .catch(() => {})
     .finally(() => { migrating = false; });
 }
@@ -237,7 +239,7 @@ const handlers = {
     if (fromServer) state.metaLoaded = true;
     if (!exists && fromServer && !seeding && store) {
       seeding = true;
-      store.seed(seedEntries(), { seeded: true, babyName: "", birthDate: DEFAULT_BIRTH, groupsVersion: GROUPS_VERSION, createdAt: Date.now() })
+      store.seed(seedEntries(), { seeded: true, babyName: "", birthDate: DEFAULT_BIRTH, groupsVersion: GROUPS_VERSION, bagLayout: BAG_LAYOUT, createdAt: Date.now() })
         .catch((e) => setStatus("error", "기본 리스트를 만들지 못했어요: " + ((e && e.message) || e)))
         .finally(() => { seeding = false; });
     }
