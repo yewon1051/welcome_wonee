@@ -1,4 +1,4 @@
-import { BAG, POLICY, DEFAULT_BIRTH, GROUPS_VERSION, GROUP_RENAME } from "./seed.js";
+import { BAG, POLICY, DEFAULT_BIRTH, GROUPS_VERSION, GROUP_RENAME, planBagV3 } from "./seed.js";
 
 /* ---------- 기본 도구 ---------- */
 const FB = "https://www.gstatic.com/firebasejs/10.12.2";
@@ -202,15 +202,30 @@ function seedEntries() {
   return out;
 }
 
-// 예전 분류 이름으로 저장된 항목을 새 이름으로 한 번 바꿔요.
+// 저장된 리스트를 새 기본 구조로 버전마다 한 번만 옮겨요.
+// 2: 분류 이름 바꾸기 / 3: 출산가방을 산모용·아기용·보호자용으로 (seed.js planBagV3)
 function migrateGroups() {
   if (migrating || !store || !state.loaded || !state.metaLoaded || !state.meta.seeded) return;
-  if ((state.meta.groupsVersion || 1) >= GROUPS_VERSION) return;
-  const changes = Object.entries(state.items)
-    .filter(([, it]) => GROUP_RENAME[it.group])
-    .map(([id, it]) => [id, { group: GROUP_RENAME[it.group] }]);
+  const v = state.meta.groupsVersion || 1;
+  if (v >= GROUPS_VERSION) return;
+  const patches = new Map();
+  const renamed = {};
+  for (const [id, it] of Object.entries(state.items)) {
+    const g = v < 2 && GROUP_RENAME[it.group] ? GROUP_RENAME[it.group] : it.group;
+    if (g !== it.group) patches.set(id, { group: g });
+    renamed[id] = { ...it, group: g };
+  }
+  let creates = [], removes = [];
+  if (v < 3) {
+    const plan = planBagV3(renamed);
+    for (const [id, p] of plan.patches) patches.set(id, { ...(patches.get(id) || {}), ...p });
+    creates = plan.creates;
+    removes = plan.removes;
+  }
   migrating = true;
-  store.patch(changes, { groupsVersion: GROUPS_VERSION })
+  // 새 항목·삭제를 먼저 하고, 버전 표시는 마지막에 남겨요 (중간에 끊기면 다음에 다시 시도)
+  Promise.all([...creates.map(([id, d]) => store.upsert(id, d)), ...removes.map((id) => store.remove(id))])
+    .then(() => store.patch([...patches], { groupsVersion: GROUPS_VERSION }))
     .catch(() => {})
     .finally(() => { migrating = false; });
 }
@@ -324,7 +339,20 @@ function renderTabs() {
 /* 분류 바로가기 칩: 누르면 그 분류로 스크롤하고, 스크롤하면 지금 보이는 분류에 불이 들어와요. */
 function renderChips() {
   const gs = state.loaded ? grouped(state.tab) : [];
-  $("#chips").replaceChildren(...gs.map((g, i) => {
+  const bar = $("#chips");
+  const names = state.tab + "|" + gs.map((g) => g.name).join("|");
+  if (bar.dataset.names === names && bar.children.length === gs.length) {
+    gs.forEach((g, i) => {
+      const d = g.entries.filter(([, it]) => it.done).length;
+      const c = bar.children[i];
+      c.classList.toggle("full", d === g.entries.length);
+      c.querySelector("small").textContent = `${d}/${g.entries.length}`;
+    });
+    spy();
+    return;
+  }
+  bar.dataset.names = names;
+  bar.replaceChildren(...gs.map((g, i) => {
     const d = g.entries.filter(([, it]) => it.done).length;
     return h("button", {
       type: "button", "data-i": i, class: d === g.entries.length ? "full" : null,
@@ -400,8 +428,51 @@ function itemEl(id, it) {
     url ? h("a", { class: "lnk", href: url, target: "_blank", rel: "noopener", title: "바로가기", "aria-label": "바로가기" }, "🔗") : null);
 }
 
+/* 체크할 때 리스트 전체를 다시 만들면 휴대폰에서 스크롤이 맨 위로 튀어요.
+   분류·항목 순서(뼈대)가 그대로면 바뀐 항목 줄만 갈아 끼우고, 뼈대가 바뀌어 다시 만들 때도 스크롤 위치를 되돌려요. */
+let listKey = "";
+const itemNodes = new Map(); // id → { el, sig }
+let groupCnt = [];
+function itemSig(it) {
+  return JSON.stringify([it.title, it.note, it.when, it.link, it.assignee, it.done, it.doneBy, it.doneAt,
+    it.dueDate, it.offset, state.meta && state.meta.birthDate, today().getTime()]);
+}
+function keepScroll(fn) {
+  const y = scrollY;
+  fn();
+  if (Math.abs(scrollY - y) > 1) scrollTo(0, y);
+}
+function patchList(gs) {
+  keepScroll(() => {
+    gs.forEach((g, i) => {
+      for (const [id, it] of g.entries) {
+        const rec = itemNodes.get(id);
+        const sig = itemSig(it);
+        if (!rec || rec.sig === sig) continue;
+        const el = itemEl(id, it);
+        const hadFocus = rec.el.contains(document.activeElement);
+        rec.el.replaceWith(el);
+        itemNodes.set(id, { el, sig });
+        if (hadFocus) { const c = el.querySelector("input"); if (c) c.focus({ preventScroll: true }); }
+      }
+      const d = g.entries.filter(([, it]) => it.done).length;
+      const cnt = groupCnt[i];
+      if (cnt) { cnt.textContent = `${d}/${g.entries.length}`; cnt.classList.toggle("full", d === g.entries.length); }
+    });
+  });
+}
+
 function renderList() {
   const root = $("#list");
+  if (state.loaded) {
+    const gs = grouped(state.tab);
+    const key = JSON.stringify([state.tab, configured, !!(state.meta && state.meta.birthDate),
+      gs.map((g) => [g.name, g.entries.map(([id]) => id)])]);
+    if (key === listKey && itemNodes.size) { patchList(gs); return; }
+    listKey = key;
+  } else listKey = "";
+  itemNodes.clear();
+  groupCnt = [];
   const nodes = [];
   if (!configured) {
     nodes.push(h("div", { class: "banner" }, h("b", null, "체험 모드예요"),
@@ -424,11 +495,17 @@ function renderList() {
       const d = g.entries.filter(([, it]) => it.done).length;
       const key = state.tab + "|" + g.name;
       const hint = GROUP_HINT[g.name];
+      const cnt = h("span", { class: "cnt" + (d === g.entries.length ? " full" : "") }, `${d}/${g.entries.length}`);
+      groupCnt[i] = cnt;
       const det = h("details", { class: "grp", id: "grp-" + i, open: !closedGroups.has(key) },
         h("summary", null,
           h("span", { class: "gname" }, g.name, hint ? h("small", null, hint) : null),
-          h("span", { class: "cnt" + (d === g.entries.length ? " full" : "") }, `${d}/${g.entries.length}`)),
-        g.entries.map(([id, it]) => itemEl(id, it)),
+          cnt),
+        g.entries.map(([id, it]) => {
+          const el = itemEl(id, it);
+          itemNodes.set(id, { el, sig: itemSig(it) });
+          return el;
+        }),
         h("button", { type: "button", class: "addbtn", onclick: () => openEdit(null, g.name) }, "＋ 이 그룹에 항목 추가"));
       det.addEventListener("toggle", () => {
         if (det.open) closedGroups.delete(key); else closedGroups.add(key);
@@ -437,7 +514,7 @@ function renderList() {
       nodes.push(det);
     });
   }
-  root.replaceChildren(...nodes);
+  keepScroll(() => root.replaceChildren(...nodes));
 }
 
 function renderBadge() {
